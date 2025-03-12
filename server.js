@@ -52,13 +52,13 @@ app.post("/employees", async (req, res) => {
 });
 
 // Update attendance for an employee
-app.put('/employees/:id', async (req, res) => {
+app.put('/attendance/:id', async (req, res) => {
   try {
     const { id } = req.params;
-    const { attendance } = req.body;
+    const { date ,status } = req.body;
     const result = await db.query(
-      'UPDATE employees SET attendance = $1 WHERE id = $2 RETURNING *',
-      [attendance, id]
+      'UPDATE attendance SET status = $2 WHERE date = $1 AND employee_id = $3 RETURNING *',
+      [date ,status, id]
     );
     res.json(result.rows[0]);
   } catch (err) {
@@ -107,25 +107,63 @@ app.get('/attendance/:year/:month', async (req, res) => {
     res.status(500).json({ error: "Internal Server Error" });
   }
 });
+//Update single date attendance of an employee
+// app.put('/attendance/:employeeId/:date/:month/:year', async(req,res) => {
+//   try{
+
+//   }
+// })
 // Update single day attendance
 app.put('/attendance/:employeeId', async (req, res) => {
   try {
     const { employeeId } = req.params;
-    const { date, status } = req.body;
-    
-    await db.query(`
-      INSERT INTO attendance (employee_id, date, status)
-      VALUES ($1, $2, $3)
-      ON CONFLICT (employee_id, date)
-      DO UPDATE SET status = EXCLUDED.status
-    `, [employeeId, date, status]);
-    
-    res.status(200).json({ success: true });
+    let { date, status } = req.body;
+
+    if (!date || !status) {
+      return res.status(400).json({ error: "Date and status are required" });
+    }
+
+    // Convert incoming date to YYYY-MM-DD
+    const formattedDate = new Date(date).toISOString().split("T")[0];
+
+    // Check if the attendance record exists
+    const existingRecord = await db.query(
+      `SELECT * FROM attendance WHERE employee_id = $1 AND date = $2`,
+      [employeeId, formattedDate]
+    );
+
+    if (existingRecord.rowCount === 0) {
+      // Insert a new record if it does not exist
+      await db.query(
+        `INSERT INTO attendance (employee_id, date, status) VALUES ($1, $2, 'NotSet')`,
+        [employeeId, formattedDate]
+      );
+    }
+
+    // Update the record with the new status
+    const result = await db.query(
+      `UPDATE attendance 
+       SET status = $3 
+       WHERE employee_id = $1 AND date = $2 
+       RETURNING id, employee_id, date::TEXT, status`, // Ensures date is returned as a plain string
+      [employeeId, formattedDate.split("T")[0], status]
+    );
+
+    // Send the response with properly formatted date
+    res.status(200).json({
+      success: true,
+      updatedRecord: {
+        ...result.rows[0],
+        date: result.rows[0].date, // Ensure YYYY-MM-DD format
+      }
+    });
+
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: 'Failed to update attendance' });
+    console.error("Error updating attendance:", err);
+    res.status(500).json({ error: "Failed to update attendance" });
   }
 });
 
-const PORT = process.env.SERVER_PORT || 5001;
-app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+
+
+app.listen(5001, () => console.log("Server running on port 5001"));
