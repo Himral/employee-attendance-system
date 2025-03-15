@@ -7,15 +7,59 @@ app.use(cors());
 app.use(express.json());
 
 // Get all employees with attendance
-app.get('/employees', async (req, res) => {
+// app.get('/employees', async (req, res) => {
+//   try {
+//     const result = await db.query('SELECT * FROM employees');
+//     res.json(result.rows);
+//   } catch (err) {
+//     console.error(err.message);
+//     res.status(500).send('Server Error');
+//   }
+// });
+app.get("/employees", async (req, res) => {
   try {
-    const result = await db.query('SELECT * FROM employees');
-    res.json(result.rows);
+    const { month, year } = req.query;
+
+    // Query to get employees with their attendance data for the given month and year
+    const employees = await db.query(`
+      SELECT 
+    e.id, 
+    e.name, 
+    a.date, 
+    COALESCE(a.status, '') AS status 
+FROM employees e
+LEFT JOIN attendance a 
+    ON e.id = a.employee_id  
+    AND EXTRACT(MONTH FROM a.date) = $1 
+    AND EXTRACT(YEAR FROM a.date) = $2
+ORDER BY e.id, a.date;
+    `, [month, year]);
+
+    // Group attendance data by employee
+    let employeeMap = new Map();
+    employees.rows.forEach(row => {
+      if (!employeeMap.has(row.id)) {
+        employeeMap.set(row.id, {
+          id: row.id,
+          name: row.name,
+          attendanceRecords: []
+        });
+      }
+      if (row.date) {
+        employeeMap.get(row.id).attendanceRecords.push({
+          date: row.date,
+          status: row.status
+        });
+      }
+    });
+
+    res.json(Array.from(employeeMap.values()));
   } catch (err) {
-    console.error(err.message);
-    res.status(500).send('Server Error');
+    console.error("Error fetching employees:", err);
+    res.status(500).json({ error: "Failed to fetch employees" });
   }
 });
+
 
 // Add multiple employees
 app.post("/employees", async (req, res) => {

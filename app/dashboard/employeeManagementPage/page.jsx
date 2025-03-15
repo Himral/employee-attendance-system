@@ -19,19 +19,33 @@ const AttendanceTable = () => {
   }, [year, month]);
 
   useEffect(() => {
-    if (!tableRef.current) return;
+  if (!tableRef.current) return;
 
-    fetch("http://localhost:5001/employees")
-      .then((res) => res.json())
-      .then((data) => {
-        const updatedEmployees = data.map(emp => ({
+  // Fetch employee and attendance data for the selected month and year
+  fetch(`http://localhost:5001/employees?month=${month}&year=${year}`)
+    .then((res) => res.json())
+    .then((data) => {
+      const updatedEmployees = data.map((emp) => {
+        // Create an array of empty status values for all days in the month
+        let attendanceArray = Array(daysInMonth).fill("");
+
+        // Fill the array with existing status values from the database
+        emp.attendanceRecords.forEach((record) => {
+          let dayIndex = new Date(record.date).getDate() - 1; // Convert date to 0-based index
+          attendanceArray[dayIndex] = record.status; // Update with actual status
+        });
+
+        return {
           ...emp,
-          attendance: Array(daysInMonth).fill("NotSet"),
-        }));
-        setEmployees(updatedEmployees);
-      })
-      .catch((err) => console.error("Error fetching data:", err));
-  }, [daysInMonth]);
+          attendance: attendanceArray,
+        };
+      });
+
+      setEmployees(updatedEmployees);
+    })
+    .catch((err) => console.error("Error fetching data:", err));
+}, [daysInMonth, month, year]);
+
 
   useEffect(() => {
     if (!tableRef.current || employees.length === 0) return;
