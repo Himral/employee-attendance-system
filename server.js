@@ -2,8 +2,6 @@ require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const db = require('./utils/db');
-
-
 const app = express();
 app.use(cors());
 app.use(express.json());
@@ -51,22 +49,6 @@ app.post("/employees", async (req, res) => {
   }
 });
 
-// Update attendance for an employee
-app.put('/attendance/:id', async (req, res) => {
-  try {
-    const { id } = req.params;
-    const { date ,status } = req.body;
-    const result = await db.query(
-      'UPDATE attendance SET status = $2 WHERE date = $1 AND employee_id = $3 RETURNING *',
-      [date ,status, id]
-    );
-    res.json(result.rows[0]);
-  } catch (err) {
-    console.error(err.message);
-    res.status(500).send('Server Error');
-  }
-});
-
 //Delete Record from the table
 app.delete('/employees/:id', async (req, res) => {
   try {
@@ -89,7 +71,6 @@ app.delete('/employees/:id', async (req, res) => {
 });
 
 //Get employee attendance for a given month and year
-// Get employee attendance for a given month and year
 app.get('/attendance/:year/:month', async (req, res) => {
   const { year, month } = req.params;
   try {
@@ -107,24 +88,22 @@ app.get('/attendance/:year/:month', async (req, res) => {
     res.status(500).json({ error: "Internal Server Error" });
   }
 });
-//Update single date attendance of an employee
-// app.put('/attendance/:employeeId/:date/:month/:year', async(req,res) => {
-//   try{
 
-//   }
-// })
-// Update single day attendance
+//Update single date attendance of an employee
 app.put('/attendance/:employeeId', async (req, res) => {
+  console.log("Request Body:", req.body);
   try {
     const { employeeId } = req.params;
-    let { date, status } = req.body;
+    let date = req.body.date;
+    let status = req.body.status;
 
     if (!date || !status) {
       return res.status(400).json({ error: "Date and status are required" });
     }
 
-    // Convert incoming date to YYYY-MM-DD
-    const formattedDate = new Date(date).toISOString().split("T")[0];
+    //Convert incoming date to YYYY-MM-DD
+    let formattedDate = new Date(date).toISOString().split("T")[0];
+    console.log("Formatted Date:", formattedDate);
 
     // Check if the attendance record exists
     const existingRecord = await db.query(
@@ -132,23 +111,27 @@ app.put('/attendance/:employeeId', async (req, res) => {
       [employeeId, formattedDate]
     );
 
+    console.log("Existing Record:", existingRecord.rows);
+
+    let result = "";
     if (existingRecord.rowCount === 0) {
-      // Insert a new record if it does not exist
-      await db.query(
-        `INSERT INTO attendance (employee_id, date, status) VALUES ($1, $2, 'NotSet')`,
-        [employeeId, formattedDate]
-      );
+        // Insert a new record if it does not exist
+        console.log("Inserting new record");
+        result = await db.query(
+          `INSERT INTO attendance (employee_id, date, status) VALUES ($1, $2, $3) RETURNING id, employee_id, date::TEXT, status`,
+          [employeeId,formattedDate,status]
+        );
     }
-
-    // Update the record with the new status
-    const result = await db.query(
-      `UPDATE attendance 
-       SET status = $3 
-       WHERE employee_id = $1 AND date = $2 
-       RETURNING id, employee_id, date::TEXT, status`, // Ensures date is returned as a plain string
-      [employeeId, formattedDate.split("T")[0], status]
-    );
-
+    else {
+        // Update the record with the new status
+        result = await db.query(
+          `UPDATE attendance 
+          SET status = $3 
+          WHERE employee_id = $1 AND date = $2 
+          RETURNING id, employee_id, date::TEXT, status`, // Ensures date is returned as a plain string
+          [employeeId, formattedDate, status]
+        );
+    }
     // Send the response with properly formatted date
     res.status(200).json({
       success: true,
